@@ -1,0 +1,186 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "triggers": {
+            "Recurrence": {
+                "recurrence": {
+                    "interval": 24,
+                    "frequency": "Hour",
+                    "timeZone": "India Standard Time",
+                    "startTime": "2025-08-23T04:20:00Z"
+                },
+                "evaluatedRecurrence": {
+                    "interval": 24,
+                    "frequency": "Hour",
+                    "timeZone": "India Standard Time",
+                    "startTime": "2025-08-23T04:20:00Z"
+                },
+                "type": "Recurrence"
+            }
+        },
+        "actions": {
+            "Get_All_Device_Status_-_RCL": {
+                "runAfter": {},
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let assetList = _GetWatchlist('RCAPMasterAssetInventoryv2') \n    | project Computer, ComputerIP, DeviceType, Entity, OS, Collector, StatusThreshold, StatusThresholdComments, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet sophosedr = union SophosEP*\n| extend Computer = \"Sophos EDR\";\nlet msintune = union Intune*\n| extend Computer = \"Microsoft Intune\";\nunion logs,m365,entra,sophosedr,msintune\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend MinutesSinceLastLog = iif(isnull(LastLogTimestamp), -1, datetime_diff(\"minute\", now(), LastLogTimestamp))\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > toint(StatusThreshold), \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"🟢 Reporting\", \"🔴 Not Reporting\")\n| project Computer, ComputerIP, DeviceType, Entity, OS, Comments, LastLogTimestamp, Collector, StatusThreshold, StatusThresholdComments, Status\n| where Entity == \"RCL\"\n| sort by Status asc",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "bd3b2892-3963-4627-8681-a1a2675b5352",
+                        "resourcegroups": "RG-RCL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-RCL-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "Get_Summary_Device_Status_-_RCL": {
+                "runAfter": {
+                    "CSV_-_All_-_RCL": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let assetList = _GetWatchlist('RCAPMasterAssetInventoryv2') \n    | project Computer, ComputerIP, DeviceType, Entity, OS, Collector, StatusThreshold, StatusThresholdComments, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet sophosedr = union SophosEP*\n| extend Computer = \"Sophos EDR\";\nlet msintune = union Intune*\n| extend Computer = \"Microsoft Intune\";\nunion logs,m365,entra,sophosedr,msintune\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend MinutesSinceLastLog = iif(isnull(LastLogTimestamp), -1, datetime_diff(\"minute\", now(), LastLogTimestamp))\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > toint(StatusThreshold), \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"🟢 Reporting\", \"🔴 Not Reporting\")\n| project Computer, ComputerIP, DeviceType, Entity, OS, Collector, Comments, LastLogTimestamp, StatusThreshold, StatusThresholdComments, Status\n| where Entity == \"RCL\"\n| summarize Reporting = countif(Status == \"🟢 Reporting\"), \n    NotReporting = countif(Status == \"🔴 Not Reporting\") \n    by DeviceType",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "bd3b2892-3963-4627-8681-a1a2675b5352",
+                        "resourcegroups": "RG-RCL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-RCL-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "Get_Only_Offline_Devices_Status_-_RCL": {
+                "runAfter": {
+                    "HTML_-_Summary_-_RCL": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let assetList = _GetWatchlist('RCAPMasterAssetInventoryv2') \n    | project Computer, ComputerIP, DeviceType, Entity, OS, Collector, StatusThreshold, StatusThresholdComments, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet sophosedr = union SophosEP*\n| extend Computer = \"Sophos EDR\";\nlet msintune = union Intune*\n| extend Computer = \"Microsoft Intune\";\nunion logs,m365,entra,sophosedr,msintune\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend MinutesSinceLastLog = iif(isnull(LastLogTimestamp), -1, datetime_diff(\"minute\", now(), LastLogTimestamp))\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > toint(StatusThreshold), \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"🟢 Reporting\", \"🔴 Not Reporting\")\n| project Computer, ComputerIP, DeviceType, Entity, OS, Collector, Comments, LastLogTimestamp, StatusThreshold, StatusThresholdComments, Status\n| where Entity == \"RCL\"\n| where Status contains \"Not Reporting\"\n| order by DeviceType asc",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "bd3b2892-3963-4627-8681-a1a2675b5352",
+                        "resourcegroups": "RG-RCL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-RCL-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "CSV_-_All_-_RCL": {
+                "runAfter": {
+                    "Get_All_Device_Status_-_RCL": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Table",
+                "inputs": {
+                    "from": "@body('Get_All_Device_Status_-_RCL')?['value']",
+                    "format": "CSV"
+                }
+            },
+            "HTML_-_Summary_-_RCL": {
+                "runAfter": {
+                    "Get_Summary_Device_Status_-_RCL": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Table",
+                "inputs": {
+                    "from": "@body('Get_Summary_Device_Status_-_RCL')?['value']",
+                    "format": "HTML"
+                }
+            },
+            "HTML_-_Offline_-_RCL": {
+                "runAfter": {
+                    "Get_Only_Offline_Devices_Status_-_RCL": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Table",
+                "inputs": {
+                    "from": "@body('Get_Only_Offline_Devices_Status_-_RCL')?['value']",
+                    "format": "HTML"
+                }
+            },
+            "Email_-_RCL": {
+                "runAfter": {
+                    "HTML_-_Offline_-_RCL": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['office365']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": {
+                        "To": "Rcl.Socsupport@relianceada.com;rcl.wafsupport@relianceada.com;jigar.shrimali@indusindcapital.com;abhishek.parab@indusindcapital.com;kolluri.kumar@relianceada.com;nitin.d.patil@relianceada.com;Shrinivas.Dudhare@indusindinsurance.com;pravin.patil@indusindinsurance.com;",
+                        "Subject": "Daily Microsoft Sentinel Device Health Report - RCL - @{formatDateTime(utcNow(), 'yyyy-MM-dd')}",
+                        "Body": "<p class=\"editor-paragraph\">Hi Team,<br><br>Please find attached the Asset Health Report Contains both Not-Reporting &amp; Reporting Devices, generated based on the last log ingested into Sentinel for respective device.</p><br><p class=\"editor-paragraph\">Kindly review the report and take appropriate action for any devices listed as offline, as these may require investigation or intervention.</p><br><p class=\"editor-paragraph\"><u><span class=\"editor-text-underline\">Device Health Summary</span></u></p><p class=\"editor-paragraph\">@{body('HTML_-_Summary_-_RCL')}</p><p class=\"editor-paragraph\"><br><br><u><span class=\"editor-text-underline\">Not Reporting Device List</span></u><br>@{body('HTML_-_Offline_-_RCL')}<br><br><br>Regards,<br>HGS Secure<br>**This is an auto-generated email. No reply is required.**</p>",
+                        "Cc": "Charan.Teja@teamhgs.com;Prasanth.D@teamhgs.com;Ghaznafer.Rahi@teamhgs.com;Chandranath.N@teamhgs.com;lee.g@teamhgs.com;soc_ciso@teamhgs.com;HindujaGroupSOC@teamhgs.com;chandramauuli@hindujagroup.com;rakeshkumar.u@sonata-software.com;shubhamangala.k@sonata-software.com;saumitra.a@sonata-software.com;revati.murudi@sonata-software.com;teja.nagolu@sonata-software.com;manjuvani.va@sonata-software.com;kaveri.rg@sonata-software.com;",
+                        "Attachments": [
+                            {
+                                "Name": "RCLSentinelDeviceHealthReport.csv",
+                                "ContentBytes": "@base64(body('CSV_-_All_-_RCL'))"
+                            }
+                        ],
+                        "Importance": "Normal"
+                    },
+                    "path": "/v2/Mail"
+                }
+            }
+        },
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "type": "Object",
+                "defaultValue": {}
+            }
+        }
+    },
+    "parameters": {
+        "$connections": {
+            "type": "Object",
+            "value": {
+                "azuremonitorlogs": {
+                    "id": "/subscriptions/bd3b2892-3963-4627-8681-a1a2675b5352/providers/Microsoft.Web/locations/centralindia/managedApis/azuremonitorlogs",
+                    "connectionId": "/subscriptions/bd3b2892-3963-4627-8681-a1a2675b5352/resourceGroups/RG-RCL-Sentinel-CI-01/providers/Microsoft.Web/connections/azuremonitorlogs-1",
+                    "connectionName": "azuremonitorlogs-1"
+                },
+                "office365": {
+                    "id": "/subscriptions/bd3b2892-3963-4627-8681-a1a2675b5352/providers/Microsoft.Web/locations/centralindia/managedApis/office365",
+                    "connectionId": "/subscriptions/bd3b2892-3963-4627-8681-a1a2675b5352/resourceGroups/RG-RCL-Sentinel-CI-01/providers/Microsoft.Web/connections/office365-2",
+                    "connectionName": "office365-2"
+                }
+            }
+        }
+    }
+}
