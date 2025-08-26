@@ -1,0 +1,1008 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "triggers": {
+            "Recurrence": {
+                "recurrence": {
+                    "interval": 30,
+                    "frequency": "Minute",
+                    "timeZone": "India Standard Time",
+                    "startTime": "2025-08-06T10:00:00Z"
+                },
+                "evaluatedRecurrence": {
+                    "interval": 30,
+                    "frequency": "Minute",
+                    "timeZone": "India Standard Time",
+                    "startTime": "2025-08-06T10:00:00Z"
+                },
+                "type": "Recurrence"
+            }
+        },
+        "actions": {
+            "HGLCount": {
+                "runAfter": {},
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('HGLMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, Collector, Entity, StatusThreshold, StatusThresholdComments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , Custom_CiscoSwitch_CL\n  , Custom_CUCM_CL\n  , Custom_ESXI_CL\n  , LinuxSyslog_CL\n  , CommonSecurityLog;\nlet mfirewall = merakifirewalllogs_CL\n| extend Computer = deviceSerial;\nlet mswitchap = union isfuzzy=true\n    merakiswitcheslogs_CL\n  , merakiwirelesslogs_CL\n| extend Computer = deviceName;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet s1edr = union SentinelOne*\n| extend Computer = \"Sentinel One EDR\";\nlet msintune = union Intune*\n| extend Computer = \"Microsoft Intune\";\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nunion logs,mswitchap,mfirewall,m365,msintune,s1edr,entra\n| extend LogComputer = coalesce(Computer, DeviceName)\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, Collector, Entity, LastLogTimestamp, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "7fe939fd-d2c7-442f-a172-7ee226fab7ac",
+                        "resourcegroups": "RG-HGL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-HGL-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "Send_an_email_(V2)": {
+                "runAfter": {
+                    "Close_the_Table2": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['office365']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": {
+                        "To": "Charan.Teja@teamhgs.com;Prasanth.D@teamhgs.com;Ghaznafer.Rahi@teamhgs.com;Chandranath.N@teamhgs.com;Bilal.Ahmad@teamhgs.com;Dinesh.K@teamhgs.com;Shantanu.W@teamhgs.com;Devaigari.Suman@teamhgs.com;HindujaGroupSOC@teamhgs.com;sajad.malik@teamhgs.com;",
+                        "Subject": "Entity Wise Sentinel Health Check Report",
+                        "Body": "<p class=\"editor-paragraph\">Hi Team,</p><p class=\"editor-paragraph\">Please find the Sentinel Health Report, Do review and take necessary action if you find any anomaly</p><p class=\"editor-paragraph\">If offline device count is above 10% it will be considered as Anomaly.</p><br><p class=\"editor-paragraph\"><u><span class=\"editor-text-underline\">Entity wise Asset Count Health Reporting</span></u></p><p class=\"editor-paragraph\">@{variables('htmlTable')}</p><br><p class=\"editor-paragraph\"><u><span class=\"editor-text-underline\">Collector wise Asset Count Health Reporting</span></u></p><p class=\"editor-paragraph\">@{variables('CollectorReport')}</p><br><p class=\"editor-paragraph\">Regards,<br>HGS Secure<br>**This is an auto-generated email. No reply is required.**</p>",
+                        "Importance": "Normal"
+                    },
+                    "path": "/v2/Mail"
+                }
+            },
+            "HREPLCount": {
+                "runAfter": {
+                    "HGLCount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('HREPLMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet sophosedr = union\n    SophosEPAlerts_CL\n  , SophosEPEvents_CL\n| extend Computer = \"Sophos EDR\";\nlet sophosfw = sophosfirewallevents_CL\n| extend Computer = DvcHostname;\nunion logs,m365,entra,sophosedr,sophosfw\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "280818ec-882e-44c0-a1a3-a33e86755425",
+                        "resourcegroups": "RG-HREPL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-HREPL-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "Initialize_htmlTable": {
+                "runAfter": {
+                    "RCLCount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "htmlTable",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "HGLForEach": {
+                "foreach": "@body('HGLCount')?['value']",
+                "actions": {
+                    "Append_to_string_variable": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('HGLForEach')?['Entity']}</td>\n  <td>@{items('HGLForEach')?['Reporting']}</td>\n  <td>@{items('HGLForEach')?['NotReporting']}</td>\n  <td>@{items('HGLForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "Set_variable": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "HREPLForEach": {
+                "foreach": "@body('HREPLCount')?['value']",
+                "actions": {
+                    "Append_to_string_variable_1": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('HREPLForEach')?['Entity']}</td>\n  <td>@{items('HREPLForEach')?['Reporting']}</td>\n  <td>@{items('HREPLForEach')?['NotReporting']}</td>\n  <td>@{items('HREPLForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "HGLForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "Set_variable": {
+                "runAfter": {
+                    "Initialize_htmlTable": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "SetVariable",
+                "inputs": {
+                    "name": "htmlTable",
+                    "value": "<table border=\"1\" style=\"border-collapse: collapse;\">\n  <tr>\n    <th>Entity</th>\n    <th>Reporting</th>\n    <th>NotReporting</th>\n    <th>HealthStatus</th>\n  </tr>\n"
+                }
+            },
+            "Close_the_Table": {
+                "runAfter": {
+                    "HospitalForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "AppendToStringVariable",
+                "inputs": {
+                    "name": "htmlTable",
+                    "value": "</table>"
+                }
+            },
+            "HospitalCount": {
+                "runAfter": {
+                    "HREPLCount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('HospitalMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet s1edr = union SentinelOne*\n| extend Computer = \"Sentinel One EDR\";\nunion logs,s1edr,entra\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "3a6c4d73-c05b-49b3-9468-7bcd17b6f278",
+                        "resourcegroups": "RG-Hinduja-Hospital-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-Hinduja-Hospital-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "HospitalForEach": {
+                "foreach": "@body('HospitalCount')?['value']",
+                "actions": {
+                    "Append_to_string_variable_2": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('HospitalForEach')?['Entity']}</td>\n  <td>@{items('HospitalForEach')?['Reporting']}</td>\n  <td>@{items('HospitalForEach')?['NotReporting']}</td>\n  <td>@{items('HospitalForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "HREPLForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "HTLCount": {
+                "runAfter": {
+                    "HospitalCount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('HTLMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet s1edr = union SentinelOne*\n| extend Computer = \"Sentinel One EDR\";\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet meraki = union HTL_chennai_merakiswitcheslogs_CL, HTL_pune_merakiswitcheslogs_CL\n| extend Computer = deviceSerial;\nunion logs,s1edr,entra,m365,meraki\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "371b538a-9f99-435c-aba9-5c129fd7bf95",
+                        "resourcegroups": "RG-HTL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-HTL-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "HTLForEach": {
+                "foreach": "@body('HTLCount')?['value']",
+                "actions": {
+                    "Append_to_string_variable_3": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('HTLForEach')?['Entity']}</td>\n  <td>@{items('HTLForEach')?['Reporting']}</td>\n  <td>@{items('HTLForEach')?['NotReporting']}</td>\n  <td>@{items('HTLForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "HospitalForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "OHMCount": {
+                "runAfter": {
+                    "HTLCount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('OHMMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, StatusThresholdComments, Comments;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet msintune = union Intune*\n| extend Computer = \"Microsoft Intune\";\nlet msdefender = union Device*\n| extend Computer = \"Microsoft Defender\";\nunion Syslog,m365,entra,msintune,msdefender\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments, LastLogTimestamp, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "7c9a8214-0c2c-454d-bf7a-a2594b939401",
+                        "resourcegroups": "RG-OHM-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-OHM-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "OHMForEach": {
+                "foreach": "@body('OHMCount')?['value']",
+                "actions": {
+                    "Append_to_string_variable_4": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('OHMForEach')?['Entity']}</td>\n  <td>@{items('OHMForEach')?['Reporting']}</td>\n  <td>@{items('OHMForEach')?['NotReporting']}</td>\n  <td>@{items('OHMForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "HTLForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "SwitchCount": {
+                "runAfter": {
+                    "OHMCount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('SwitchMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet s1edr = union SentinelOne*\n| extend Computer = \"Sentinel One EDR\";\nlet m365 = union OfficeActivity\n| extend Computer = \"Microsoft 365\";\nunion logs,s1edr,entra,m365\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "9feb48ac-a36c-4666-ad9d-b08ddf227f59",
+                        "resourcegroups": "RG-Switch-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-Switch-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "SwitchForEach": {
+                "foreach": "@body('SwitchCount')?['value']",
+                "actions": {
+                    "Append_to_string_variable_5": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('SwitchForEach')?['Entity']}</td>\n  <td>@{items('SwitchForEach')?['Reporting']}</td>\n  <td>@{items('SwitchForEach')?['NotReporting']}</td>\n  <td>@{items('SwitchForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "OHMForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "GroCount": {
+                "runAfter": {
+                    "SwitchCount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('GROMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, StatusThresholdComments, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nunion logs,entra\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "e4a8f583-d986-4920-a265-19e2a22e4139",
+                        "resourcegroups": "RG-GRO-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-GRO-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "GroForEach": {
+                "foreach": "@body('GroCount')?['value']",
+                "actions": {
+                    "Append_to_string_variable_6": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('GroForEach')?['Entity']}</td>\n  <td>@{items('GroForEach')?['Reporting']}</td>\n  <td>@{items('GroForEach')?['NotReporting']}</td>\n  <td>@{items('GroForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "SwitchForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "GOLILCount": {
+                "runAfter": {
+                    "GroCount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('GOLILMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, Entity, OS, Collector, StatusThreshold, StatusThresholdComments, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet synapse = union Synapse*\n| extend Computer = \"Synapse Data Lake\";\nlet agw = union AzureDiagnostics\n| extend Computer = \"Azure Application Gateway\";\nlet meraki = union *meraki*\n| extend Computer = deviceSerial;\nunion logs,m365,entra,synapse,agw,meraki\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, Entity, OS, Collector, Comments, LastLogTimestamp, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "98d97e67-0828-45ae-baaf-65dff8eee69e",
+                        "resourcegroups": "RG-GOLIL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-GOLIL-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "GOLILForEach": {
+                "foreach": "@body('GOLILCount')?['value']",
+                "actions": {
+                    "Append_to_string_variable_7": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('GOLILForEach')?['Entity']}</td>\n  <td>@{items('GOLILForEach')?['Reporting']}</td>\n  <td>@{items('GOLILForEach')?['NotReporting']}</td>\n  <td>@{items('GOLILForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "GroForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "GOICount": {
+                "runAfter": {
+                    "GOLILCount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('GOIMasterAssetInventory') \n| project Computer, ComputerIP, DeviceType, Entity, OS, Collector, StatusThreshold, StatusThresholdComments, Comments;\nlet allLogs = union isfuzzy=true \n    (Syslog | extend LogCollector = CollectorHostName),\n    (CommonSecurityLog | extend LogCollector = CollectorHostName),\n    (WindowsEvent | extend LogCollector = \"Arc Agent\"),\n    (SecurityEvent | extend LogCollector = \"Arc Agent\")\n| extend LogComputer = Computer;\nlet logSummary = allLogs \n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer, LogCollector;\nassetList\n| join kind=leftouter logSummary on $left.Computer == $right.LogComputer and $left.Collector == $right.LogCollector\n| extend MinutesSinceLastLog = iif(isnull(LastLogTimestamp), -1, datetime_diff(\"minute\", now(), LastLogTimestamp))\n| extend Status = case(\n    MinutesSinceLastLog == -1 or MinutesSinceLastLog > toint(StatusThreshold), \"Not Reporting\",\n    \"Reporting\"\n)\n| project Computer, ComputerIP, DeviceType, Entity, OS, Collector, Comments, LastLogTimestamp, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus\n| order by Entity asc",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "f7ace209-efa7-4c3f-ade6-199245ddb3d7",
+                        "resourcegroups": "RG-GOI-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-GOI-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "GOIForEach": {
+                "foreach": "@body('GOICount')?['value']",
+                "actions": {
+                    "Append_to_string_variable_8": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('GOIForEach')?['Entity']}</td>\n  <td>@{items('GOIForEach')?['Reporting']}</td>\n  <td>@{items('GOIForEach')?['NotReporting']}</td>\n  <td>@{items('GOIForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "GOLILForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "RCLCount": {
+                "runAfter": {
+                    "GOICount": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('RCAPMasterAssetInventoryv2') \n    | project Computer, ComputerIP, DeviceType, Entity, OS, Collector, StatusThreshold, StatusThresholdComments, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet sophosedr = union SophosEP*\n| extend Computer = \"Sophos EDR\";\nlet msintune = union Intune*\n| extend Computer = \"Microsoft Intune\";\nunion logs,m365,entra,sophosedr,msintune\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, Entity, OS, Comments, LastLogTimestamp, Collector, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Reporting, NotReporting, HealthStatus\n| sort by Entity asc ",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "bd3b2892-3963-4627-8681-a1a2675b5352",
+                        "resourcegroups": "RG-RCL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-RCL-Sentinel-CI-01",
+                        "timerange": "last 15 minutes"
+                    }
+                }
+            },
+            "RCLForEach": {
+                "foreach": "@body('RCLCount')?['value']",
+                "actions": {
+                    "Append_to_string_variable_9": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "htmlTable",
+                            "value": "<tr>\n  <td>@{items('RCLForEach')?['Entity']}</td>\n  <td>@{items('RCLForEach')?['Reporting']}</td>\n  <td>@{items('RCLForEach')?['NotReporting']}</td>\n  <td>@{items('RCLForEach')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "GOIForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "RCL-Collector": {
+                "runAfter": {
+                    "RCLForEach": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('RCAPMasterAssetInventoryv2') \n    | project Computer, ComputerIP, DeviceType, Entity, OS, Collector, StatusThreshold, StatusThresholdComments, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet sophosedr = union SophosEP*\n| extend Computer = \"Sophos EDR\";\nlet msintune = union Intune*\n| extend Computer = \"Microsoft Intune\";\nunion logs,m365,entra,sophosedr,msintune\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, Entity, OS, Comments, LastLogTimestamp, Collector, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector\n| extend Total = Reporting + NotReporting\n| extend Entity = \"RCL\"\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Collector, Reporting, NotReporting, HealthStatus\n| sort by Collector asc ",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "bd3b2892-3963-4627-8681-a1a2675b5352",
+                        "resourcegroups": "RG-RCL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-RCL-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "Initialize_variables": {
+                "runAfter": {
+                    "Hospital-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "CollectorReport",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "Set_variable_1": {
+                "runAfter": {
+                    "Initialize_variables": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "SetVariable",
+                "inputs": {
+                    "name": "CollectorReport",
+                    "value": "<table border=\"1\" style=\"border-collapse: collapse;\">\n  <tr>\n    <th>Entity</th>\n    <th>Collector</th>\n    <th>Reporting</th>\n    <th>NotReporting</th>\n    <th>HealthStatus</th>\n  </tr>\n"
+                }
+            },
+            "RCLForEachCollector": {
+                "foreach": "@body('RCL-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_10": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('RCLForEachCollector')?['Entity']}</td>\n<td>@{items('RCLForEachCollector')?['Collector']}</td>\n<td>@{items('RCLForEachCollector')?['Reporting']}</td>\n<td>@{items('RCLForEachCollector')?['NotReporting']}</td>\n<td>@{items('RCLForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "Set_variable_1": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "Close_the_Table2": {
+                "runAfter": {
+                    "Close_the_Table": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "AppendToStringVariable",
+                "inputs": {
+                    "name": "CollectorReport",
+                    "value": "</table>"
+                }
+            },
+            "HGL-Collector": {
+                "runAfter": {
+                    "RCL-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('HGLMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, Collector, Entity, StatusThreshold, StatusThresholdComments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , Custom_CiscoSwitch_CL\n  , Custom_CUCM_CL\n  , Custom_ESXI_CL\n  , LinuxSyslog_CL\n  , CommonSecurityLog;\nlet mfirewall = merakifirewalllogs_CL\n| extend Computer = deviceSerial;\nlet mswitchap = union isfuzzy=true\n    merakiswitcheslogs_CL\n  , merakiwirelesslogs_CL\n| extend Computer = deviceName;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet s1edr = union SentinelOne*\n| extend Computer = \"Sentinel One EDR\";\nlet msintune = union Intune*\n| extend Computer = \"Microsoft Intune\";\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nunion logs,mswitchap,mfirewall,m365,msintune,s1edr,entra\n| extend LogComputer = coalesce(Computer, DeviceName)\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, Collector, Entity, LastLogTimestamp, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector\n| extend Total = Reporting + NotReporting\n| extend Entity = \"HGL\"\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity,Collector, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "7fe939fd-d2c7-442f-a172-7ee226fab7ac",
+                        "resourcegroups": "RG-HGL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-HGL-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "HGLForEachCollector": {
+                "foreach": "@body('HGL-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_12": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('HGLForEachCollector')?['Entity']}</td>\n<td>@{items('HGLForEachCollector')?['Collector']}</td>\n<td>@{items('HGLForEachCollector')?['Reporting']}</td>\n<td>@{items('HGLForEachCollector')?['NotReporting']}</td>\n<td>@{items('HGLForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "RCLForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "HREPL-Collector": {
+                "runAfter": {
+                    "HGL-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('HREPLMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet sophosedr = union\n    SophosEPAlerts_CL\n  , SophosEPEvents_CL\n| extend Computer = \"Sophos EDR\";\nlet sophosfw = sophosfirewallevents_CL\n| extend Computer = DvcHostname;\nunion logs,m365,entra,sophosedr,sophosfw\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector\n| extend Total = Reporting + NotReporting\n| extend Entity = \"HREPL\"\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Collector, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "280818ec-882e-44c0-a1a3-a33e86755425",
+                        "resourcegroups": "RG-HREPL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-HREPL-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "OHM-Collector": {
+                "runAfter": {
+                    "HREPL-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('OHMMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, StatusThresholdComments, Comments;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet msintune = union Intune*\n| extend Computer = \"Microsoft Intune\";\nlet msdefender = union Device*\n| extend Computer = \"Microsoft Defender\";\nunion Syslog,m365,entra,msintune,msdefender\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments, LastLogTimestamp, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector\n| extend Total = Reporting + NotReporting\n| extend Entity = \"OHM\"\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Collector, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "7c9a8214-0c2c-454d-bf7a-a2594b939401",
+                        "resourcegroups": "RG-OHM-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-OHM-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "Switch-Collector": {
+                "runAfter": {
+                    "OHM-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('SwitchMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet s1edr = union SentinelOne*\n| extend Computer = \"Sentinel One EDR\";\nlet m365 = union OfficeActivity\n| extend Computer = \"Microsoft 365\";\nunion logs,s1edr,entra,m365\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector\n| extend Total = Reporting + NotReporting\n| extend Entity = \"Switch\"\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Collector, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "9feb48ac-a36c-4666-ad9d-b08ddf227f59",
+                        "resourcegroups": "RG-Switch-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-Switch-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "GRO-Collector": {
+                "runAfter": {
+                    "Switch-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('GROMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, StatusThresholdComments, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nunion logs,entra\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector\n| extend Total = Reporting + NotReporting\n| extend Entity = \"GRO\"\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Collector, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "e4a8f583-d986-4920-a265-19e2a22e4139",
+                        "resourcegroups": "RG-GRO-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-GRO-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "HTL-Collector": {
+                "runAfter": {
+                    "GRO-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('HTLMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet s1edr = union SentinelOne*\n| extend Computer = \"Sentinel One EDR\";\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet meraki = union HTL_chennai_merakiswitcheslogs_CL, HTL_pune_merakiswitcheslogs_CL\n| extend Computer = deviceSerial;\nunion logs,s1edr,entra,m365,meraki\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector\n| extend Total = Reporting + NotReporting\n| extend Entity = \"HTL\"\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Collector, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "371b538a-9f99-435c-aba9-5c129fd7bf95",
+                        "resourcegroups": "RG-HTL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-HTL-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "GOLIL-Collector": {
+                "runAfter": {
+                    "HTL-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('GOLILMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, Entity, OS, Collector, StatusThreshold, StatusThresholdComments, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet m365 = OfficeActivity\n| extend Computer = \"Microsoft 365\";\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet synapse = union Synapse*\n| extend Computer = \"Synapse Data Lake\";\nlet agw = union AzureDiagnostics\n| extend Computer = \"Azure Application Gateway\";\nlet meraki = union *meraki*\n| extend Computer = deviceSerial;\nunion logs,m365,entra,synapse,agw,meraki\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, Entity, OS, Collector, Comments, LastLogTimestamp, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector\n| extend Total = Reporting + NotReporting\n| extend Entity = \"GOLIL\"\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Collector, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "98d97e67-0828-45ae-baaf-65dff8eee69e",
+                        "resourcegroups": "RG-GOLIL-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-GOLIL-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "GOI-Collector": {
+                "runAfter": {
+                    "GOLIL-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('GOIMasterAssetInventory') \n| project Computer, ComputerIP, DeviceType, Entity, OS, Collector, StatusThreshold, StatusThresholdComments, Comments;\nlet allLogs = union isfuzzy=true \n    (Syslog | extend LogCollector = CollectorHostName),\n    (CommonSecurityLog | extend LogCollector = CollectorHostName),\n    (WindowsEvent | extend LogCollector = \"Arc Agent\"),\n    (SecurityEvent | extend LogCollector = \"Arc Agent\")\n| extend LogComputer = Computer;\nlet logSummary = allLogs \n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer, LogCollector;\nassetList\n| join kind=leftouter logSummary on $left.Computer == $right.LogComputer and $left.Collector == $right.LogCollector\n| extend MinutesSinceLastLog = iif(isnull(LastLogTimestamp), -1, datetime_diff(\"minute\", now(), LastLogTimestamp))\n| extend Status = case(\n    MinutesSinceLastLog == -1 or MinutesSinceLastLog > toint(StatusThreshold), \"Not Reporting\",\n    \"Reporting\"\n)\n| project Computer, ComputerIP, DeviceType, Entity, OS, Collector, Comments, LastLogTimestamp, StatusThreshold, StatusThresholdComments, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector, Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Collector, Reporting, NotReporting, HealthStatus\n| order by Entity asc",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "f7ace209-efa7-4c3f-ade6-199245ddb3d7",
+                        "resourcegroups": "RG-GOI-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-GOI-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "Hospital-Collector": {
+                "runAfter": {
+                    "GOI-Collector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": "let thresholdPercent = 10;\nlet assetList = _GetWatchlist('HospitalMasterAssetInventory') \n    | project Computer, ComputerIP, DeviceType, OS, Collector, Entity, StatusThreshold, Comments;\nlet logs = union isfuzzy=true\n    WindowsEvent\n  , Syslog\n  , SecurityEvent\n  , CommonSecurityLog;\nlet entra = union isfuzzy=true\n    AuditLogs\n  , SigninLogs\n| extend Computer = \"Microsoft Entra ID\";\nlet s1edr = union SentinelOne*\n| extend Computer = \"Sentinel One EDR\";\nunion logs,s1edr,entra\n| extend LogComputer = Computer\n| summarize LastLogTimestamp = max(TimeGenerated) by LogComputer\n| join kind=rightouter (\n    assetList\n) on $left.LogComputer == $right.Computer\n| extend ThresholdMinutes = toint(StatusThreshold)\n| extend MinutesSinceLastLog = iif(\n    isnull(LastLogTimestamp), \n    -1, \n    max_of(0, datetime_diff(\"minute\", LastLogTimestamp, now()))\n)\n| extend Status1 = case(\n    MinutesSinceLastLog == -1, \"Offline\",\n    MinutesSinceLastLog > ThresholdMinutes, \"Offline\",\n    \"Online\"\n)\n| extend Status = case(Status1 == \"Online\", \"Reporting\", \"Not Reporting\")\n| project Computer, ComputerIP, DeviceType, OS, Collector, Entity, LastLogTimestamp, Comments, StatusThreshold, Status\n| summarize Reporting = countif(Status == \"Reporting\"), \n            NotReporting = countif(Status == \"Not Reporting\")\n        by Collector, Entity\n| extend Total = Reporting + NotReporting\n| extend NotReportingPercent = iif(Total == 0, 0.0, (NotReporting * 100.0) / Total)\n| extend HealthStatus = case(\n    NotReportingPercent > thresholdPercent, \"🔴 Anomaly\",\n    \"🟢 Normal\"\n)\n| project Entity, Collector, Reporting, NotReporting, HealthStatus",
+                    "path": "/queryData",
+                    "queries": {
+                        "subscriptions": "3a6c4d73-c05b-49b3-9468-7bcd17b6f278",
+                        "resourcegroups": "RG-Hinduja-Hospital-Sentinel-CI-01",
+                        "resourcetype": "Log Analytics Workspace",
+                        "resourcename": "Log-Hinduja-Hospital-Sentinel-CI-01",
+                        "timerange": "Last 15 days"
+                    }
+                }
+            },
+            "HREPLForEachCollector": {
+                "foreach": "@body('HREPL-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_11": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('HREPLForEachCollector')?['Entity']}</td>\n<td>@{items('HREPLForEachCollector')?['Collector']}</td>\n<td>@{items('HREPLForEachCollector')?['Reporting']}</td>\n<td>@{items('HREPLForEachCollector')?['NotReporting']}</td>\n<td>@{items('HREPLForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "HGLForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "OHMForEachCollector": {
+                "foreach": "@body('OHM-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_13": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('OHMForEachCollector')?['Entity']}</td>\n<td>@{items('OHMForEachCollector')?['Collector']}</td>\n<td>@{items('OHMForEachCollector')?['Reporting']}</td>\n<td>@{items('OHMForEachCollector')?['NotReporting']}</td>\n<td>@{items('OHMForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "HREPLForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "SwitchForEachCollector": {
+                "foreach": "@body('Switch-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_14": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('SwitchForEachCollector')?['Entity']}</td>\n<td>@{items('SwitchForEachCollector')?['Collector']}</td>\n<td>@{items('SwitchForEachCollector')?['Reporting']}</td>\n<td>@{items('SwitchForEachCollector')?['NotReporting']}</td>\n<td>@{items('SwitchForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "OHMForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "GROForEachCollector": {
+                "foreach": "@body('GRO-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_15": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('GROForEachCollector')?['Entity']}</td>\n<td>@{items('GROForEachCollector')?['Collector']}</td>\n<td>@{items('GROForEachCollector')?['Reporting']}</td>\n<td>@{items('GROForEachCollector')?['NotReporting']}</td>\n<td>@{items('GROForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "SwitchForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "HTLForEachCollector": {
+                "foreach": "@body('HTL-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_16": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('HTLForEachCollector')?['Entity']}</td>\n<td>@{items('HTLForEachCollector')?['Collector']}</td>\n<td>@{items('HTLForEachCollector')?['Reporting']}</td>\n<td>@{items('HTLForEachCollector')?['NotReporting']}</td>\n<td>@{items('HTLForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "GROForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "GOLILForEachCollector": {
+                "foreach": "@body('GOLIL-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_17": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('GOLILForEachCollector')?['Entity']}</td>\n<td>@{items('GOLILForEachCollector')?['Collector']}</td>\n<td>@{items('GOLILForEachCollector')?['Reporting']}</td>\n<td>@{items('GOLILForEachCollector')?['NotReporting']}</td>\n<td>@{items('GOLILForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "HTLForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "GOIForEachCollector": {
+                "foreach": "@body('GOI-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_18": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('GOIForEachCollector')?['Entity']}</td>\n<td>@{items('GOIForEachCollector')?['Collector']}</td>\n<td>@{items('GOIForEachCollector')?['Reporting']}</td>\n<td>@{items('GOIForEachCollector')?['NotReporting']}</td>\n<td>@{items('GOIForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "GOLILForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "HospitalForEachCollector": {
+                "foreach": "@body('Hospital-Collector')?['value']",
+                "actions": {
+                    "Append_to_string_variable_19": {
+                        "type": "AppendToStringVariable",
+                        "inputs": {
+                            "name": "CollectorReport",
+                            "value": "<tr>\n<td>@{items('HospitalForEachCollector')?['Entity']}</td>\n<td>@{items('HospitalForEachCollector')?['Collector']}</td>\n<td>@{items('HospitalForEachCollector')?['Reporting']}</td>\n<td>@{items('HospitalForEachCollector')?['NotReporting']}</td>\n<td>@{items('HospitalForEachCollector')?['HealthStatus']}</td>\n</tr>"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "GOIForEachCollector": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            }
+        },
+        "outputs": {},
+        "parameters": {
+            "$connections": {
+                "type": "Object",
+                "defaultValue": {}
+            }
+        }
+    },
+    "parameters": {
+        "$connections": {
+            "type": "Object",
+            "value": {
+                "azuremonitorlogs": {
+                    "id": "/subscriptions/bd3b2892-3963-4627-8681-a1a2675b5352/providers/Microsoft.Web/locations/centralindia/managedApis/azuremonitorlogs",
+                    "connectionId": "/subscriptions/bd3b2892-3963-4627-8681-a1a2675b5352/resourceGroups/RG-RCL-Sentinel-CI-01/providers/Microsoft.Web/connections/azuremonitorlogs-1",
+                    "connectionName": "azuremonitorlogs-1"
+                },
+                "office365": {
+                    "id": "/subscriptions/bd3b2892-3963-4627-8681-a1a2675b5352/providers/Microsoft.Web/locations/centralindia/managedApis/office365",
+                    "connectionId": "/subscriptions/bd3b2892-3963-4627-8681-a1a2675b5352/resourceGroups/RG-RCL-Sentinel-CI-01/providers/Microsoft.Web/connections/office365-2",
+                    "connectionName": "office365-2"
+                }
+            }
+        }
+    }
+}
