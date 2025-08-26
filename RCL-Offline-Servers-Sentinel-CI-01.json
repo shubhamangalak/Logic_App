@@ -1,0 +1,260 @@
+{
+    "id": "RCL-Offline-Servers-Sentinel-CI-01",
+    "title": "RCL-Offline-Servers-Sentinel-CI-01",
+    "description": "RCL-Offline-Servers-Sentinel-CI-01",
+    "iconType": "ScheduledTask",
+    "skuType": "Consumption",
+    "data": {
+        "definition": {
+            "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+                "$connections": {
+                    "defaultValue": {},
+                    "type": "Object"
+                }
+            },
+            "triggers": {
+                "Recurrence": {
+                    "recurrence": {
+                        "interval": 1,
+                        "frequency": "Day",
+                        "timeZone": "India Standard Time",
+                        "schedule": {
+                            "hours": [
+                                11
+                            ],
+                            "minutes": [
+                                0
+                            ]
+                        }
+                    },
+                    "evaluatedRecurrence": {
+                        "interval": 1,
+                        "frequency": "Day",
+                        "timeZone": "India Standard Time",
+                        "schedule": {
+                            "hours": [
+                                11
+                            ],
+                            "minutes": [
+                                0
+                            ]
+                        }
+                    },
+                    "type": "Recurrence"
+                }
+            },
+            "actions": {
+                "Initialize_variables": {
+                    "runAfter": {},
+                    "type": "InitializeVariable",
+                    "inputs": {
+                        "variables": [
+                            {
+                                "name": "empty",
+                                "type": "array",
+                                "value": []
+                            }
+                        ]
+                    }
+                },
+                "Run_query_and_list_results-Critical_Devices": {
+                    "runAfter": {
+                        "Initialize_variables": [
+                            "Succeeded"
+                        ]
+                    },
+                    "type": "ApiConnection",
+                    "inputs": {
+                        "host": {
+                            "connection": {
+                                "name": "@parameters('$connections')['azuremonitorlogs-1']['connectionId']"
+                            }
+                        },
+                        "method": "post",
+                        "body": "union isfuzzy=true \n(CommonSecurityLog\n| where not(CollectorHostName == \"\")),\n(Syslog\n| where Computer has_any (\"firepower\",\"UAT-PRI-RCAP.COM\",\"NGIPS-IPS-PRI\",\"NGIPS-IPS-SEC\",\"10.63.244.67\",\"10.63.253.181\",\"10.63.253.189\" ,\"10.63.253.215\",\"10.65.8.222\",\"10.63.247.18\",\"10.63.247.19\",\"10.63.247.20\",\"10.65.8.248\",\"10.63.247.16\",\"10.63.247.11\",\"10.63.247.12\",\"10.63.247.13\",\"10.63.247.14\",\"10.63.253.228\",\"ec2-15-207-123-24.ap-south-1.compute.amazonaws.com\",\"10.62.172.132\",\"10.62.185.132\",\"10.62.185.133\",\"10.62.173.132\",\"citrixwaf.brobotinsurance.com\",\"10.62.185.20\",\"10.65.8.37\",\"10.65.8.149\",\n\"10.126.164.13\", \"rnlicfortiauth\", \"10.126.252.8\", \"10.126.252.9\", \"RNLIC_YOTTA_DC_AirtelBackhaul\", \"RNLIC_YOTTA_DC_TATABackhaul\", \"RLI_YOTTA_SIFYMPLS_Backhaul\", \"RLIIDCVPN01-PRI\", \"RLIIDCVPN02-SEC\", \"RLIGGNFGT-PRI\", \"RLIGGNFGT-SEC\",\"RNLIHOBKCFGT_PRI\",\"RNLIHOBKCFGT_INT\",\"RLIGENFGINT\", \"RLIFE-DR-FG600E\", \"RLI-DR-MPLS-FW\", \"RLIFE_DR_INTERNET\", \"10.126.164.107\", \"10.126.164.108\", \"10.126.142.104\", \"10.126.142.105\",\"RNLIHOBKCFGT_SEC\",\"FMC-MGMT-SERVER\")\n| where not(CollectorHostName == \"\") \n| extend DeviceVendor = case(\nComputer has_any (\"firepower\",\"UAT-PRI-RCAP.COM\",\"NGIPS-IPS-PRI\",\"NGIPS-IPS-SEC\",\"FMC-MGMT-SERVER\"), \"Cisco\", \nComputer has \"10.63.244.67\" ,\"Fortinet\",\nComputer has_any (\"10.63.253.181\",\"10.63.253.189\" ,\"10.63.253.215\",\"10.65.8.222\",\"10.63.247.18\",\"10.63.247.19\",\"10.63.247.20\",\"10.65.8.248\",\"10.63.247.16\",\"10.63.247.11\",\"10.63.247.12\",\"10.63.247.13\",\"10.63.247.14\"),\"Citrix\",\nComputer has \"10.63.253.228\" ,\"Zscaler\",\nComputer has \"ec2-15-207-123-24.ap-south-1.compute.amazonaws.com\",\"Checkpoint\",\nComputer has_any (\"10.62.172.132\",\"10.62.185.132\",\"10.62.185.133\",\"10.62.173.132\"), \"Fortinet\", \nComputer has_any (\"citrixwaf.brobotinsurance.com\",\"10.62.185.20\",\"10.65.8.37\",\"10.65.8.149\"),\"Citrix\",\nComputer has_any (\"10.126.164.13\", \"rnlicfortiauth\", \"10.126.252.8\", \"10.126.252.9\", \"RNLIC_YOTTA_DC_AirtelBackhaul\", \"RNLIC_YOTTA_DC_TATABackhaul\", \"RLI_YOTTA_SIFYMPLS_Backhaul\", \"RLIIDCVPN01-PRI\", \"RLIIDCVPN02-SEC\", \"RLIGGNFGT-PRI\", \"RLIGGNFGT-SEC\", \"RLIFE-DR-FG600E\", \"RLI-DR-MPLS-FW\", \"RLIFE_DR_INTERNET\",\"RNLIHOBKCFGT_PRI\",\"RNLIHOBKCFGT_INT\",\"RLIGENFGINT\",\"RNLIHOBKCFGT_SEC\"),\"Fortinet\", \nComputer has_any (\"10.126.164.107\", \"10.126.164.108\", \"10.126.142.104\", \"10.126.142.105\"),\"Citrix\",\n\"Unknown\")\n| extend DeviceProduct = case(\nComputer has \"firepower\" or Computer has \"UAT-PRI-RCAP.COM\" , \"Firewall/FTD\", \nComputer has \"NGIPS-IPS-PRI\" or Computer has \"NGIPS-IPS-SEC\" ,\"NGIPS\",\nComputer has \"10.63.244.67\" ,\"Firewall\",\nComputer has_any (\"10.63.253.181\",\"10.63.253.189\" ,\"10.63.253.215\"),\"MDM\",\nComputer has_any (\"10.65.8.222\",\"10.63.247.18\"),\"VPN\",\nComputer has_any (\"10.63.247.19\",\"10.63.247.20\"),\"VDI\",\nComputer has_any (\"10.65.8.248\",\"10.63.247.16\"),\"WAF\",\nComputer has_any (\"10.63.247.11\",\"10.63.247.12\",\"10.63.247.13\",\"10.63.247.14\"),\"Load Balancer/ADC\",\nComputer has \"10.63.253.228\" ,\"ZPA connector\",\nComputer has \"ec2-15-207-123-24.ap-south-1.compute.amazonaws.com\",\"Email Harmony\",\nComputer has_any (\"10.62.172.132\"), \"Firewall\", \nComputer has_any (\"10.62.185.132\",\"10.62.185.133\",\"10.62.173.132\"), \"Load Balancer/ADC\", \nComputer has_any (\"citrixwaf.brobotinsurance.com\",\"10.62.185.20\",\"10.65.8.37\",\"10.65.8.149\"),\"WAF\",\nComputer has_any (\"10.126.164.13\", \"rnlicfortiauth\", \"10.126.252.8\", \"10.126.252.9\", \"RNLIC_YOTTA_DC_AirtelBackhaul\", \"RNLIC_YOTTA_DC_TATABackhaul\", \"RLI_YOTTA_SIFYMPLS_Backhaul\", \"RLIIDCVPN01-PRI\", \"RLIIDCVPN02-SEC\", \"RLIGGNFGT-PRI\", \"RLIGGNFGT-SEC\",\"RNLIHOBKCFGT_PRI\",\"RNLIHOBKCFGT_INT\",\"RLIGENFGINT\",\"RNLIHOBKCFGT_SEC\"),\"DC Firewall\", \nComputer has_any (\"10.126.164.107\", \"10.126.164.108\", \"10.126.142.104\", \"10.126.142.105\"),\"Load balancer\",\nComputer has_any (\"RLIFE-DR-FG600E\", \"RLI-DR-MPLS-FW\", \"RLIFE_DR_INTERNET\"),\"DR Firewall\", \nComputer has \"FMC-MGMT-SERVER\",\"FMC\",\n\"Unknown\") ),\n(WindowsEvent\n| where Computer has_any (\"RCLDAKDC08\", \"RCLDAKDC07\",\"RCLDAKDC06\",\"RCLDAKDC03\",\"BROBOTDC01\",\"BROBOTDC02\",\"BROBOTDC03\",\"RGIAADC\",\"RGIAD\")\n| extend CollectorHostName = extract(@\"machines/([^/]+)\", 1, _ResourceId) \n| extend Computer = extract(@\"^([^\\.]+)\", 1, Computer)\n| extend DeviceVendor=\"Microsoft\"\n| extend DeviceProduct = case(\nComputer has_any ( \"RCLDAKDC08\", \"RCLDAKDC07\",\"RCLDAKDC06\",\"RCLDAKDC03\",\"BROBOTDC01\",\"BROBOTDC02\",\"BROBOTDC03\",\"RGIAADC\",\"RGIAD\"), \"Domain Controller\",\n\"Unknown\" )),\n(SophosEPCEvents_RARC_CL\n| extend Computer=\"Sophos-Computer-RARC\"\n| extend CollectorHostName=\"API Based\"\n| extend DeviceVendor=\"Sophos\"\n| extend DeviceProduct = \"Endpoint Protection\" ),\n(SophosEPCEvents_RSEC_CL\n| extend Computer=\"Sophos-Computer-RSEC\"\n| extend CollectorHostName=\"API Based\"\n| extend DeviceVendor=\"Sophos\"\n| extend DeviceProduct = \"Endpoint Protection\" ),\n(SophosEPCEvents_RGI_CL\n| extend Computer=\"Sophos-Computer-RGI\"\n| extend CollectorHostName=\"API Based\"\n| extend DeviceVendor=\"Sophos\"\n| extend DeviceProduct = \"Endpoint Protection\" ),\n(SophosEPCEvents_RLI_CL\n| extend Computer=\"Sophos-Computer-RNLI\"\n| extend CollectorHostName=\"API Based\"\n| extend DeviceVendor=\"Sophos\"\n| extend DeviceProduct = \"Endpoint Protection\" ),\n(SophosEPEvents_CL\n| where CustomerId contains \"3e5de2d8-98e4-458e-b312-005ba0d786b7\" and SrcDvcType contains \"computer\"\n| extend Computer=\"Sophos-Computer-RCL\"\n| extend CollectorHostName=\"API Based\"\n| extend DeviceVendor=\"Sophos\"\n| extend DeviceProduct = \"Endpoint Protection\" ),\n(SophosEPEvents_RNLI_CL\n| extend Computer=\"Sophos-Server-RNLI\"\n| extend CollectorHostName=\"API Based\"\n| extend DeviceVendor=\"Sophos\"\n| extend DeviceProduct = \"Server Protection\" ),\n(SophosEPEvents_CL\n| where CustomerId contains \"faa679ac-350f-4084-93b9-b69a1fd4ce2a\" and SrcDvcType contains \"server\"\n| extend Computer=\"Sophos-Server-RGI\"\n| extend CollectorHostName=\"API Based\"\n| extend DeviceVendor=\"Sophos\"\n| extend DeviceProduct = \"Server Protection\" )\n| where TimeGenerated > ago(7d)\n| extend EntityName = case(\nComputer has_any (\"10.126.164.13\", \"rnlicfortiauth\", \"10.126.252.8\", \"10.126.252.9\", \"RNLIC_YOTTA_DC_AirtelBackhaul\", \"RNLIC_YOTTA_DC_TATABackhaul\", \"RLI_YOTTA_SIFYMPLS_Backhaul\", \"RLIIDCVPN01-PRI\", \"RLIIDCVPN02-SEC\", \"RLIGGNFGT-PRI\", \"RLIGGNFGT-SEC\",\"RNLIHOBKCFGT_PRI\",\"RNLIHOBKCFGT_INT\",\"RLIGENFGINT\",\"RNLIHOBKCFGT_SEC\",\"RLIFE-DR-FG600E\", \"RLI-DR-MPLS-FW\", \"RLIFE_DR_INTERNET\",\"10.126.164.107\", \"10.126.164.108\", \"10.126.142.104\", \"10.126.142.105\"),\"RNLI\",\nComputer has_any (\"10.185.6.126\",\"APNIC-PRI\",\"UAT-PRI-RCAP.COM\",\"RCAP-Zscaler_FW-Pri\",\"zscaler-nss\",\"APNIC-SEC\",\"RCAP-Zscaler_FW-Sec\",\"rcldlppolicy.reliancecapital.com\",\"firepower\",\"UAT-PRI-RCAP.COM\",\"NGIPS-IPS-SEC\",\"NGIPS-IPS-PRI\",\"10.63.253.228\",\"10.65.8.222\",\"10.63.247.18\",\"10.65.8.248\",\"10.63.253.181\",\"10.63.253.189\",\"10.63.253.215\",\"10.63.247.16\",\"10.63.244.67\",\"ec2-15-207-123-24.ap-south-1.compute.amazonaws.com\",\"10.63.247.19\",\"10.63.247.20\",\"10.63.247.14\",\"10.63.247.12\",\"10.63.247.11\",\"10.63.247.13\",\"RCLDAKDC06\",\"RCLDAKDC07\",\"RCLDAKDC08\",\"10.185.6.126\",\"FMC-MGMT-SERVER\"),\"RCL\",\nComputer has \"Sophos-Computer-RARC\",\"RARC\",\nComputer has \"Sophos-Computer-RSEC\",\"RSEC\",\nComputer has_any (\"Sophos-Computer-RGI\",\"Sophos-Server-RGI\"),\"RGI\",\nComputer has_any (\"Sophos-Computer-RNLI\",\"Sophos-Server-RNLI\"),\"RNLI\",\nComputer has \"Sophos-Computer-RCL\",\"RCL\",\n\"RGI\"\n)\n| summarize LastSeenTime = arg_max(TimeGenerated,*) by Computer, CollectorHostName\n| project \nEndpoint =Computer, \nCollectorName=CollectorHostName, \nLastSeenTimeUTC = LastSeenTime,\nLastSeenTime = format_datetime(datetime_add(\"minute\", 330, LastSeenTime), 'dd-MM-yyyy HH:mm:ss'),Channel=Type,DeviceVendor,DeviceProduct,EntityName\n| extend Diff = datetime_diff('hour', now(), LastSeenTimeUTC)\n| extend StatusIndex = case(Diff > 12,0,1) \n// Uncomment below line to view only offline server list\n//| where Diff > 12 \n| extend Status = case(Diff > 12,\"❌ Offline\",\"✅ Online\")\n| order by StatusIndex asc\n| project-away StatusIndex, Diff,LastSeenTimeUTC\n",
+                        "path": "/queryData",
+                        "queries": {
+                            "subscriptions": "bd3b2892-3963-4627-8681-a1a2675b5352",
+                            "resourcegroups": "RG-RCL-Sentinel-CI-01",
+                            "resourcetype": "Log Analytics Workspace",
+                            "resourcename": "Log-RCL-Sentinel-CI-01",
+                            "timerange": "Set in query"
+                        }
+                    }
+                },
+                "Parse_JSON-Critical_Devices": {
+                    "runAfter": {
+                        "Run_query_and_list_results-Critical_Devices": [
+                            "Succeeded"
+                        ]
+                    },
+                    "type": "ParseJson",
+                    "inputs": {
+                        "content": "@body('Run_query_and_list_results-Critical_Devices')?['value']",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "Endpoint": {
+                                        "type": "string"
+                                    },
+                                    "CollectorName": {
+                                        "type": "string"
+                                    },
+                                    "LastSeenTime": {
+                                        "type": "string"
+                                    },
+                                    "Channel": {
+                                        "type": "string"
+                                    },
+                                    "DeviceVendor": {
+                                        "type": "string"
+                                    },
+                                    "DeviceProduct": {
+                                        "type": "string"
+                                    },
+                                    "EntityName": {
+                                        "type": "string"
+                                    },
+                                    "Status": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "Endpoint",
+                                    "CollectorName",
+                                    "LastSeenTime",
+                                    "Channel",
+                                    "DeviceVendor",
+                                    "DeviceProduct",
+                                    "EntityName",
+                                    "Status"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "Condition-Critical_Devices": {
+                    "actions": {
+                        "Create_HTML_table-Critical_Devices": {
+                            "type": "Table",
+                            "inputs": {
+                                "from": "@body('Parse_JSON-Critical_Devices')",
+                                "format": "HTML",
+                                "columns": [
+                                    {
+                                        "header": "Endpoints  ",
+                                        "value": "@item()['Endpoint']"
+                                    },
+                                    {
+                                        "header": "EntityName",
+                                        "value": "@item()['EntityName']"
+                                    },
+                                    {
+                                        "header": "CollectorName",
+                                        "value": "@item()['CollectorName']"
+                                    },
+                                    {
+                                        "header": "Status",
+                                        "value": "@item()['Status']"
+                                    },
+                                    {
+                                        "header": "LastSeenTime",
+                                        "value": "@item()['LastSeenTime']"
+                                    },
+                                    {
+                                        "header": "DeviceVendor",
+                                        "value": "@item()['DeviceVendor']"
+                                    },
+                                    {
+                                        "header": "DeviceProduct",
+                                        "value": "@item()['DeviceProduct']"
+                                    },
+                                    {
+                                        "header": "Channel",
+                                        "value": "@item()['Channel']"
+                                    }
+                                ]
+                            }
+                        },
+                        "Compose": {
+                            "runAfter": {
+                                "Create_HTML_table-Critical_Devices": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Compose",
+                            "inputs": "<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    table {\n      width: 100%;\n      border-collapse: collapse;\n      font-family: Arial, sans-serif;\n    }\n    th, td {\n      border: 1px solid #dddddd;\n      text-align: left;\n      padding: 8px;\n    }\n    th {\n      background-color: #f2f2f2;\n    }\n    tr:nth-child(even) {\n      background-color: #fafafa;\n    }\n  </style>\n</head>\n<body>\n\n  <p>Hi Team,</p>\n\n  <p>Below are the Critical Network Security Devices which are not ingesting logs to Azure Sentinel since 12 hrs. Immediate attention required! </p>\n\n  <table>\n    <tr>\n      @{body('Create_HTML_table-Critical_Devices')}\n    </tr>\n  </table>\n\n  <p>Regards,<br>HGS SOC</p>\n\n</body>\n</html>\n"
+                        },
+                        "Send_an_email_(V2)": {
+                            "runAfter": {
+                                "Compose": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['office365']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "body": {
+                                    "To": "shubhamangala.k@sonata-software.com,rakeshkumar.u@sonata-software.com",
+                                    "Subject": "Immediate attention required || Critical Network Security Devices are offline",
+                                    "Body": "<p class=\"editor-paragraph\">@{outputs('Compose')}</p>",
+                                    "Importance": "High"
+                                },
+                                "path": "/v2/Mail"
+                            }
+                        }
+                    },
+                    "runAfter": {
+                        "Parse_JSON-Critical_Devices": [
+                            "Succeeded"
+                        ]
+                    },
+                    "else": {
+                        "actions": {
+                            "Compose-Critical_Devices": {
+                                "type": "Compose",
+                                "inputs": "No Critical Network Security Devices are offline"
+                            }
+                        }
+                    },
+                    "expression": {
+                        "or": [
+                            {
+                                "not": {
+                                    "equals": [
+                                        "@body('Parse_JSON-Critical_Devices')",
+                                        "@variables('empty')"
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    "type": "If"
+                }
+            },
+            "outputs": {}
+        },
+        "parameters": {},
+        "connections": {
+            "azuremonitorlogs-1": {
+                "id": "/subscriptions/0000-0000/providers/Microsoft.Web/locations/centralindia/managedApis/azuremonitorlogs",
+                "connectionId": "",
+                "connectionName": ""
+            },
+            "office365": {
+                "id": "/subscriptions/0000-0000/providers/Microsoft.Web/locations/centralindia/managedApis/office365",
+                "connectionId": "",
+                "connectionName": ""
+            }
+        }
+    }
+}
