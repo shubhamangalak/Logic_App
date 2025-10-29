@@ -192,7 +192,7 @@
                             },
                             "method": "post",
                             "body": {
-                                "To": "shubhamangala.k@sonata-software.com,rakeshkumar.u@sonata-software.com",
+                                "To": "user1@test.com,user2@test.com",
                                 "Subject": "Immediate attention required || Critical Network Security Devices are offline",
                                 "Body": "<p class=\"editor-paragraph\">@{outputs('Compose')}</p>",
                                 "Importance": "High"
