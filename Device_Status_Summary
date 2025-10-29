@@ -142,10 +142,10 @@
                     },
                     "method": "post",
                     "body": {
-                        "To": "Rcl.Socsupport@relianceada.com;rcl.wafsupport@relianceada.com;jigar.shrimali@indusindcapital.com;abhishek.parab@indusindcapital.com;kolluri.kumar@relianceada.com;nitin.d.patil@relianceada.com;Shrinivas.Dudhare@indusindinsurance.com;pravin.patil@indusindinsurance.com;",
+                        "To": "user1@test.com;user2@test.com;",
                         "Subject": "Daily Microsoft Sentinel Device Health Report - RCL - @{formatDateTime(utcNow(), 'yyyy-MM-dd')}",
                         "Body": "<p class=\"editor-paragraph\">Hi Team,<br><br>Please find attached the Asset Health Report Contains both Not-Reporting &amp; Reporting Devices, generated based on the last log ingested into Sentinel for respective device.</p><br><p class=\"editor-paragraph\">Kindly review the report and take appropriate action for any devices listed as offline, as these may require investigation or intervention.</p><br><p class=\"editor-paragraph\"><u><span class=\"editor-text-underline\">Device Health Summary</span></u></p><p class=\"editor-paragraph\">@{body('HTML_-_Summary_-_RCL')}</p><p class=\"editor-paragraph\"><br><br><u><span class=\"editor-text-underline\">Not Reporting Device List</span></u><br>@{body('HTML_-_Offline_-_RCL')}<br><br><br>Regards,<br>HGS Secure<br>**This is an auto-generated email. No reply is required.**</p>",
-                        "Cc": "Charan.Teja@teamhgs.com;Prasanth.D@teamhgs.com;Ghaznafer.Rahi@teamhgs.com;Chandranath.N@teamhgs.com;lee.g@teamhgs.com;soc_ciso@teamhgs.com;HindujaGroupSOC@teamhgs.com;chandramauuli@hindujagroup.com;rakeshkumar.u@sonata-software.com;shubhamangala.k@sonata-software.com;saumitra.a@sonata-software.com;revati.murudi@sonata-software.com;teja.nagolu@sonata-software.com;manjuvani.va@sonata-software.com;kaveri.rg@sonata-software.com;",
+                        "Cc": "user3@test.com,user4@test.com",
                         "Attachments": [
                             {
                                 "Name": "RCLSentinelDeviceHealthReport.csv",
